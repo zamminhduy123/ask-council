@@ -123,11 +123,11 @@ async def _click_send(browser):
 
 
 def _scrape(html):
-    """Extract assistant answer text from HTML (excludes thinking card)."""
+    """Extract final answer text; "" while only the thinking card is present."""
     from bs4 import BeautifulSoup
     from inscriptis import get_text
     soup = BeautifulSoup(html, "html.parser")
-    # Primary: .response-message-content.phase-answer (Qwen Studio stable hooks)
+    # Answer body first: present only once streaming finishes.
     nodes = soup.select(".response-message-content.phase-answer")
     if not nodes:
         nodes = soup.select(".custom-qwen-markdown")
@@ -135,22 +135,19 @@ def _scrape(html):
         nodes = soup.select("[data-chat-answers-wrap]")
     if not nodes:
         nodes = soup.select("#qk-markdown-react")
-    if not nodes:
-        # Fallback: assistant wrapper, same level as GLM chat-assistant
-        nodes = soup.select(".qwen-chat-message-assistant, .chat-response-message")
-    if not nodes:
+    if nodes:
+        return get_text(str(nodes[-1])).strip()
+    # No answer body yet. If the thinking card (.qwen-chat-status-card + Skip)
+    # is live its text churns — report "" so the stability loop keeps waiting
+    # instead of tracking thinking text forever.
+    if soup.select(".qwen-chat-status-card"):
         return ""
-    latest = nodes[-1]
-    cleaned = BeautifulSoup(str(latest), "html.parser")
-    # Reasoning card is a sibling, but strip in case of nesting
-    for tc in cleaned.select(
-        ".qwen-chat-thinking-status-card-title-text, "
-        "[class*='thinking'], [class*='reasoning']"
-    ):
-        tc.decompose()
-    text = get_text(str(cleaned)).strip()
-    # Guard against "Thought completed" label leaking into answer
-    lines = [ln for ln in text.splitlines() if ln.strip().lower() not in ("thought completed",)]
+    # Thinking gone but no body class (render variant): use wrapper text.
+    wrap = soup.select(".qwen-chat-message-assistant, .chat-response-message")
+    if not wrap:
+        return ""
+    text = get_text(str(wrap[-1])).strip()
+    lines = [ln for ln in text.splitlines() if ln.strip().lower() not in ("skip",)]
     return "\n".join(lines).strip()
 
 
