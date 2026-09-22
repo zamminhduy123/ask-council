@@ -1,0 +1,4 @@
+zendriver
+beautifulsoup4
+inscriptis
+python-dotenv

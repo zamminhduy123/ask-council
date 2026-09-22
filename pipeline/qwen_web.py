@@ -1,0 +1,219 @@
+"""Qwen-web minimal client (chat.qwen.ai, stable semantic hooks, token-only)."""
+import os
+from asyncio import sleep
+from pathlib import Path
+from time import time
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+LOGIN_URL = "https://chat.qwen.ai/"
+TEXTBOX_CSS = "textarea.message-input-textarea"
+TEXTBOX_FALLBACKS = [
+    "textarea.message-input-textarea",
+    "textarea",
+    '[role="textbox"][contenteditable="true"]',
+]
+SEND_CSS = ".message-input-right-button-send"
+DEFAULT_CHROME = Path(__file__).resolve().parent.parent / ".browsers" / "chrome-linux64" / "chrome"
+
+
+async def launch(headless=True):
+    """Start zendriver browser on Qwen chat, best-effort CF bypass."""
+    import zendriver
+    kwargs = {"headless": headless, "sandbox": False}
+    browser_bin = os.environ.get("BROWSER_PATH")
+    if (not browser_bin or "chrome-headless-shell" in browser_bin) and DEFAULT_CHROME.is_file():
+        browser_bin = str(DEFAULT_CHROME)
+    if not browser_bin:
+        for mac_path in (
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        ):
+            if Path(mac_path).is_file():
+                browser_bin = mac_path
+                break
+    if browser_bin:
+        kwargs["browser_executable_path"] = browser_bin
+
+    browser = await zendriver.start(**kwargs)
+    await browser.get(LOGIN_URL)
+    try:
+        cf_box = await browser.main_tab.query_selector("#cf-turnstile")
+        if cf_box:
+            await browser.main_tab.verify_cf(timeout=5)
+    except Exception:
+        pass  # no challenge presented
+    return browser
+
+
+async def login_token(browser, token=None):
+    """Login via localStorage token, wait for chat box or raise."""
+    token = token or os.environ.get("QWEN_TOKEN")
+    assert token, "export QWEN_TOKEN first"
+    # Qwen stores raw JWT in localStorage `token` (DevTools: localStorage.getItem("token"))
+    await browser.main_tab.evaluate(
+        f"localStorage.setItem('token', '{token}')",
+        await_promise=True, return_by_value=True,
+    )
+    await browser.main_tab.reload()
+    await sleep(4)
+    last_err = None
+    for sel in TEXTBOX_FALLBACKS:
+        try:
+            await browser.main_tab.select(sel, timeout=5)
+            break
+        except Exception as e:
+            last_err = e
+    else:
+        raise RuntimeError(f"Qwen login failed: composer not found ({last_err})")
+    # Detect logged-out state: header shows Log in / Sign up when token invalid
+    logged_out = await browser.main_tab.evaluate(
+        """(() => {
+          const btns = [...document.querySelectorAll('button')].map(b => b.innerText || '');
+          return btns.some(t => t.includes('Log in'));
+        })()""",
+        await_promise=True, return_by_value=True,
+    )
+    if logged_out:
+        raise RuntimeError("Qwen token rejected (page shows Log in). Refresh QWEN_TOKEN via chat.qwen.ai DevTools: localStorage.getItem('token')")
+
+
+async def _click_send(browser):
+    """Click Qwen send button or fallback to closest button / Enter."""
+    await browser.main_tab.evaluate(
+        """(() => {
+          const sels = [
+            '.message-input-right-button-send button',
+            '.message-input-right-button-send',
+            'button[aria-label="\\u53d1\\u9001\\u6d88\\u606f"]',
+            'button[aria-label="Send"]'
+          ];
+          for (const s of sels) {
+            const btn = document.querySelector(s);
+            if (btn && !btn.disabled) { btn.click(); return; }
+          }
+          const ta = document.querySelector('textarea.message-input-textarea')
+            || document.querySelector('textarea');
+          const btns = [...document.querySelectorAll('button')];
+          if (ta) {
+            const r = ta.getBoundingClientRect();
+            let best = null, bd = 1e12;
+            for (const b of btns) {
+              const q = b.getBoundingClientRect();
+              const d = Math.hypot(q.left - r.right, q.top - r.top);
+              if (d < bd) { bd = d; best = b; }
+            }
+            if (best && !best.disabled) { best.click(); return; }
+          }
+          if (btns.length) { btns[btns.length - 1].click(); return; }
+          throw new Error('send button not found');
+        })()""",
+        await_promise=True, return_by_value=True,
+    )
+
+
+def _scrape(html):
+    """Extract assistant answer text from HTML (excludes thinking card)."""
+    from bs4 import BeautifulSoup
+    from inscriptis import get_text
+    soup = BeautifulSoup(html, "html.parser")
+    # Primary: .response-message-content.phase-answer (Qwen Studio stable hooks)
+    nodes = soup.select(".response-message-content.phase-answer")
+    if not nodes:
+        nodes = soup.select(".custom-qwen-markdown")
+    if not nodes:
+        nodes = soup.select("[data-chat-answers-wrap]")
+    if not nodes:
+        nodes = soup.select("#qk-markdown-react")
+    if not nodes:
+        # Fallback: assistant wrapper, same level as GLM chat-assistant
+        nodes = soup.select(".qwen-chat-message-assistant, .chat-response-message")
+    if not nodes:
+        return ""
+    latest = nodes[-1]
+    cleaned = BeautifulSoup(str(latest), "html.parser")
+    # Reasoning card is a sibling, but strip in case of nesting
+    for tc in cleaned.select(
+        ".qwen-chat-thinking-status-card-title-text, "
+        "[class*='thinking'], [class*='reasoning']"
+    ):
+        tc.decompose()
+    text = get_text(str(cleaned)).strip()
+    # Guard against "Thought completed" label leaking into answer
+    lines = [ln for ln in text.splitlines() if ln.strip().lower() not in ("thought completed",)]
+    return "\n".join(lines).strip()
+
+
+async def _select_composer(browser, timeout=15):
+    """Return composer element, trying stable selector then fallbacks."""
+    last_err = None
+    for sel in TEXTBOX_FALLBACKS:
+        try:
+            return await browser.main_tab.select(sel, timeout=5)
+        except Exception as e:
+            last_err = e
+    raise RuntimeError(f"Qwen composer not found ({last_err})")
+
+
+async def send_message(browser, message, timeout=180):
+    """Send message, wait for stable response text, return it."""
+    box = await _select_composer(browser)
+    # send_keys fires real keystrokes so the send button arms
+    # (programmatic fill leaves it inert on Qwen Studio).
+    try:
+        await box.send_keys(message)
+    except Exception:
+        # contenteditable fallback: focus + execCommand insert
+        import json
+        msg_json = json.dumps(message)
+        await browser.main_tab.evaluate(
+            f"""(() => {{
+              const ed = document.querySelector('[role="textbox"][contenteditable="true"]');
+              if (ed) {{
+                ed.focus();
+                document.execCommand('selectAll', false, null);
+                document.execCommand('insertText', false, {msg_json});
+                return;
+              }}
+              const ta = document.querySelector('textarea.message-input-textarea')
+                || document.querySelector('textarea');
+              if (!ta) throw new Error('composer not found');
+              ta.focus();
+              ta.value = {msg_json};
+              ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+              ta.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            }})()""",
+            await_promise=True, return_by_value=True,
+        )
+    await sleep(0.6)
+    await _click_send(browser)
+    end, last, stable_since = time() + timeout, "", time()
+    while time() < end:
+        await sleep(3)
+        html = await browser.main_tab.evaluate(
+            "document.documentElement.outerHTML", await_promise=True, return_by_value=True,
+        )
+        text = _scrape(html)
+        if not text:
+            continue  # still streaming / not mounted yet
+        if text != last:
+            last, stable_since = text, time()
+        if time() - stable_since > 6:
+            # Completion signal mirrors DeepSeek/GLM: 6s DOM stability.
+            # Qwen also mounts .copy-response-button on done; stability covers both.
+            return last
+    raise TimeoutError("no stable response in timeout")
+
+
+async def ask(message, token=None, timeout=180):
+    """One-shot: launch, login, ask, close, return text."""
+    browser = await launch()
+    try:
+        await login_token(browser, token)
+        return await send_message(browser, message, timeout)
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
