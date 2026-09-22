@@ -1,0 +1,8 @@
+# ask-council
+
+> Consult free web LLMs (GLM, DeepSeek, Qwen) in parallel from any host model — no API keys. Local CLI fans out, your model writes the verdict.
+
+- Docs: README.md (setup, token table, FAQ), SKILL.md (agent instructions)
+- Run: `python pipeline/ask_council.py "QUESTION" --out opinions.md`
+- Check: `python pipeline/ask_council.py --check`
+- Terms: Council = one query across N models; Opinion = raw per-model text; Verdict = host synthesis; Debate = synthesis step only.
