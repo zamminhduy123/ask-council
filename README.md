@@ -23,7 +23,7 @@ Paste `opinions.md` back into your host chat. It follows `SKILL.md`: 1. Consensu
 |----------|---------------------|---------------------------------------------|------------------|
 | GLM      | `chat.z.ai`         | `localStorage.getItem("token")`             | `GLM_TOKEN`      |
 | DeepSeek | `chat.deepseek.com` | `localStorage` `userToken` → `value`        | `DEEPSEEK_TOKEN` |
-| Qwen     | `chat.qwen.ai`      | `localStorage.getItem("token")`             | `QWEN_TOKEN`     |
+| Qwen     | `chat.qwen.ai`      | one-time `python pipeline/ask_council.py --login qwen` (manual login, persists profile). Fallback: `QWEN_TOKEN` from `localStorage.getItem("token")` | `QWEN_TOKEN` (optional if profile saved) |
 
 macOS: system Chrome auto-detected. Linux: set `BROWSER_PATH` or use `.browsers/chrome-linux64/chrome`.
 
@@ -62,5 +62,5 @@ Yes — ChatGPT, Claude, Gemini, or any host that can read `SKILL.md`. Drop in `
 ## Notes
 
 - One-shot browser per model per run (per-model `--timeout`, default 180s). `--judge glm` gives a standalone verdict without a Host.
-- Qwen rejects expired tokens with `Qwen token rejected (page shows Log in)` — refresh via DevTools.
+- Qwen rejects bare-JWT injection in sterile profiles (bot cookies don't transfer) — run `--login qwen` once; the persistent profile (`~/.ask-council/profiles/qwen`) is reused after.
 - `Failed to connect to browser` system-wide → quit/reopen Chrome (auto-update skew) and re-run `--check`.

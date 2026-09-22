@@ -31,19 +31,26 @@ def _load_env():
 FIX_HINTS = {
     "glm": 'chat.z.ai DevTools Console → localStorage.getItem("token") → GLM_TOKEN',
     "deepseek": "chat.deepseek.com DevTools → localStorage userToken → value → DEEPSEEK_TOKEN",
-    "qwen": 'chat.qwen.ai DevTools Console → localStorage.getItem("token") → QWEN_TOKEN',
+    "qwen": 'one-time: python pipeline/ask_council.py --login qwen (else QWEN_TOKEN from chat.qwen.ai DevTools)',
 }
 
 
 async def _check_one(model, timeout=60):
     mod_name, env_key = REGISTRY[model]
-    if not os.environ.get(env_key):
-        return model, False, f"Missing {env_key}. Fix: {FIX_HINTS[model]}"
     try:
         mod = __import__(mod_name)
+        saved = mod._saved_profile() if hasattr(mod, "_saved_profile") else None
+        if not os.environ.get(env_key) and not saved:
+            return model, False, f"Missing {env_key}. Fix: {FIX_HINTS[model]}"
 
         async def _login():
-            browser = await mod.launch()
+            if saved and hasattr(mod, "launch"):
+                try:
+                    browser = await mod.launch(user_data_dir=saved)
+                except TypeError:
+                    browser = await mod.launch()
+            else:
+                browser = await mod.launch()
             try:
                 await mod.login_token(browser)
                 return True
@@ -54,7 +61,7 @@ async def _check_one(model, timeout=60):
                     pass
 
         await asyncio.wait_for(_login(), timeout)
-        return model, True, "OK (browser + token)"
+        return model, True, "OK (browser + token)" + (" via saved profile" if saved else "")
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
         if "Failed to connect to browser" in msg:
@@ -84,6 +91,37 @@ def _doctor(models):
     else:
         print("Some models failed. Fix hints above, then re-run --check.")
     return 0 if all_ok else 1
+
+
+def _manual_login(model):
+    """Headed persistent-profile login for models whose tokens don't survive sterile profiles."""
+    if model != "qwen":
+        print(f"--login currently supports only: qwen (got {model!r})")
+        return 2
+    import qwen_web
+    qwen_web.PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+
+    async def _open():
+        browser = await qwen_web.launch(headless=False, user_data_dir=str(qwen_web.PROFILE_DIR))
+        return browser
+
+    print("A Chrome window opens at chat.qwen.ai. Log in manually there,")
+    print("then return here and press Enter (profile persists at ~/.ask-council/profiles/qwen).")
+    browser = asyncio.run(_open())
+    try:
+        input("Press Enter when logged in ... ")
+    except KeyboardInterrupt:
+        print("\nAborted, profile kept.")
+        return 130
+    finally:
+        try:
+            asyncio.run(browser.stop())
+        except Exception:
+            pass
+    # Verify with a headed-off check through the saved profile
+    _, ok, msg = asyncio.run(_check_one(model))
+    print(f"[qwen] {'OK — profile saved' if ok else 'FAIL: ' + msg}")
+    return 0 if ok else 1
 
 
 async def _run_one(model, prompt, timeout):
@@ -147,11 +185,16 @@ def main():
     ap.add_argument("--out", default="", help="Write opinions markdown to file")
     ap.add_argument("--judge", default="", help="Optional standalone judge model")
     ap.add_argument("--check", action="store_true", help="Doctor: validate browser + tokens, no council run")
+    ap.add_argument("--login", default="", metavar="MODEL",
+                    help="Manual login: open headed browser with persistent profile for MODEL (currently: qwen). Log in, then press Enter.")
     args = ap.parse_args()
 
     models = [m.strip().lower() for m in args.models.split(",") if m.strip().lower() in REGISTRY]
     if not models:
         ap.error(f"--models must be subset of {list(REGISTRY)}")
+
+    if args.login:
+        sys.exit(_manual_login(args.login.strip().lower()))
 
     if args.check:
         sys.exit(_doctor(models))

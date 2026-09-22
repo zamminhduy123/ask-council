@@ -16,12 +16,15 @@ TEXTBOX_FALLBACKS = [
 ]
 SEND_CSS = ".message-input-right-button-send"
 DEFAULT_CHROME = Path(__file__).resolve().parent.parent / ".browsers" / "chrome-linux64" / "chrome"
+PROFILE_DIR = Path.home() / ".ask-council" / "profiles" / "qwen"
 
 
-async def launch(headless=True):
+async def launch(headless=True, user_data_dir=None):
     """Start zendriver browser on Qwen chat, best-effort CF bypass."""
     import zendriver
     kwargs = {"headless": headless, "sandbox": False}
+    if user_data_dir:
+        kwargs["user_data_dir"] = str(user_data_dir)
     browser_bin = os.environ.get("BROWSER_PATH")
     if (not browser_bin or "chrome-headless-shell" in browser_bin) and DEFAULT_CHROME.is_file():
         browser_bin = str(DEFAULT_CHROME)
@@ -47,10 +50,24 @@ async def launch(headless=True):
     return browser
 
 
+async def _is_logged_out(browser):
+    """True if header shows a *visible* Log in button."""
+    return await browser.main_tab.evaluate(
+        """(() => {
+          return [...document.querySelectorAll('button')]
+            .some(b => b.offsetParent && (b.innerText || '').includes('Log in'));
+        })()""",
+        await_promise=True, return_by_value=True,
+    )
+
+
 async def login_token(browser, token=None):
-    """Login via localStorage token, wait for chat box or raise."""
+    """Login via saved profile or localStorage token; raise if logged out."""
+    # Saved profile (from --login) may already hold a live session.
+    if not await _is_logged_out(browser):
+        return
     token = token or os.environ.get("QWEN_TOKEN")
-    assert token, "export QWEN_TOKEN first"
+    assert token, "export QWEN_TOKEN first (or run: python pipeline/ask_council.py --login qwen)"
     # Qwen stores raw JWT in localStorage `token` (DevTools: localStorage.getItem("token"))
     await browser.main_tab.evaluate(
         f"localStorage.setItem('token', '{token}')",
@@ -67,16 +84,8 @@ async def login_token(browser, token=None):
             last_err = e
     else:
         raise RuntimeError(f"Qwen login failed: composer not found ({last_err})")
-    # Detect logged-out state: header shows Log in / Sign up when token invalid
-    logged_out = await browser.main_tab.evaluate(
-        """(() => {
-          const btns = [...document.querySelectorAll('button')].map(b => b.innerText || '');
-          return btns.some(t => t.includes('Log in'));
-        })()""",
-        await_promise=True, return_by_value=True,
-    )
-    if logged_out:
-        raise RuntimeError("Qwen token rejected (page shows Log in). Refresh QWEN_TOKEN via chat.qwen.ai DevTools: localStorage.getItem('token')")
+    if await _is_logged_out(browser):
+        raise RuntimeError("Qwen token rejected (page shows Log in). Try: python pipeline/ask_council.py --login qwen")
 
 
 async def _click_send(browser):
@@ -206,9 +215,14 @@ async def send_message(browser, message, timeout=180):
     raise TimeoutError("no stable response in timeout")
 
 
+def _saved_profile():
+    """Return persistent profile dir if user completed --login once, else None."""
+    return str(PROFILE_DIR) if PROFILE_DIR.joinpath("Default").is_dir() else None
+
+
 async def ask(message, token=None, timeout=180):
-    """One-shot: launch, login, ask, close, return text."""
-    browser = await launch()
+    """One-shot: launch (saved profile if present), login, ask, close, return text."""
+    browser = await launch(user_data_dir=_saved_profile())
     try:
         await login_token(browser, token)
         return await send_message(browser, message, timeout)
