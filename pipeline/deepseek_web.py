@@ -90,8 +90,9 @@ def _scrape(html):
         t = get_text(str(b)).strip()
         if t and t not in texts:
             texts.append(t)
-    # One-shot browser = single turn; return latest distinct block
-    return texts[-1] if texts else ""
+    # One-shot browser = single turn; join distinct blocks (dedup identical
+    # renders), so multi-block answers aren't truncated.
+    return "\n\n".join(texts)
 
 
 async def send_message(browser, message, timeout=180):

@@ -201,8 +201,8 @@ async def send_message(browser, message, timeout=180):
             "document.documentElement.outerHTML", await_promise=True, return_by_value=True,
         )
         text = _scrape(html)
-        if not text:
-            continue  # still streaming / not mounted yet
+        if not text or _is_transient(text):
+            continue  # still streaming / researching, not an answer yet
         if text != last:
             last, stable_since = text, time()
         if time() - stable_since > 6:
@@ -210,6 +210,13 @@ async def send_message(browser, message, timeout=180):
             # Qwen also mounts .copy-response-button on done; stability covers both.
             return last
     raise TimeoutError("no stable response in timeout")
+
+
+def _is_transient(text):
+    """True for short research/status labels (e.g. "Reading sources…"), not answers."""
+    import re
+    t = text.strip()
+    return bool(re.fullmatch(r"(Reading sources…?|Thinking…?|Reasoning…?|Searching…?|Analyzing…?)", t))
 
 
 def _saved_profile():
