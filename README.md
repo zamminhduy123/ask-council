@@ -61,6 +61,6 @@ Yes — ChatGPT, Claude, Gemini, or any host that can read `SKILL.md`. Drop in `
 
 ## Notes
 
-- One-shot browser per model per run (per-model `--timeout`, default 180s). `--judge glm` gives a standalone verdict without a Host.
+- One-shot browser per model per run (per-model `--timeout`, default 300s — models often think for minutes). `--judge glm` gives a standalone verdict without a Host.
 - Qwen rejects bare-JWT injection in sterile profiles (bot cookies don't transfer) — run `--login qwen` once; the persistent profile (`~/.ask-council/profiles/qwen`) is reused after.
 - `Failed to connect to browser` system-wide → quit/reopen Chrome (auto-update skew) and re-run `--check`.

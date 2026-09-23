@@ -85,7 +85,7 @@ def _scrape(html):
     return text if text else get_text(str(latest)).strip()
 
 
-async def send_message(browser, message, timeout=180):
+async def send_message(browser, message, timeout=300):
     """Send message, wait for stable response text, return it."""
     await _dismiss_modal(browser)
     msg_json = json.dumps(message)
@@ -132,7 +132,7 @@ async def send_message(browser, message, timeout=180):
     raise TimeoutError("no stable response in timeout")
 
 
-async def ask(message, token=None, timeout=180):
+async def ask(message, token=None, timeout=300):
     """One-shot: launch, login, ask, close, return text."""
     browser = await launch()
     try:

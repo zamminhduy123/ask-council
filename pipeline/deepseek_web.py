@@ -95,7 +95,7 @@ def _scrape(html):
     return "\n\n".join(texts)
 
 
-async def send_message(browser, message, timeout=180):
+async def send_message(browser, message, timeout=300):
     """Send message, wait for fresh ds-markdown response, return text."""
     box = await browser.main_tab.select(TEXTBOX_CSS, timeout=15)
     await box.send_keys(message)
@@ -116,7 +116,7 @@ async def send_message(browser, message, timeout=180):
     raise TimeoutError("no stable response in timeout")
 
 
-async def ask(message, token=None, timeout=180):
+async def ask(message, token=None, timeout=300):
     """One-shot: launch, login, ask, close, return text."""
     browser = await launch()
     try:

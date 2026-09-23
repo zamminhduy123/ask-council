@@ -162,7 +162,7 @@ async def _select_composer(browser, timeout=15):
     raise RuntimeError(f"Qwen composer not found ({last_err})")
 
 
-async def send_message(browser, message, timeout=180):
+async def send_message(browser, message, timeout=300):
     """Send message, wait for stable response text, return it."""
     box = await _select_composer(browser)
     # send_keys fires real keystrokes so the send button arms
@@ -224,7 +224,7 @@ def _saved_profile():
     return str(PROFILE_DIR) if PROFILE_DIR.joinpath("Default").is_dir() else None
 
 
-async def ask(message, token=None, timeout=180):
+async def ask(message, token=None, timeout=300):
     """One-shot: launch (saved profile if present), login, ask, close, return text."""
     browser = await launch(user_data_dir=_saved_profile())
     try:

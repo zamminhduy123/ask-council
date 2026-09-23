@@ -181,7 +181,7 @@ def main():
     ap.add_argument("prompt", nargs="?", help="User query (or omit to read stdin)")
     ap.add_argument("--models", default="glm,deepseek,qwen",
                     help="Comma list from glm,deepseek,qwen (default: all)")
-    ap.add_argument("--timeout", type=int, default=180, help="Per-model timeout seconds")
+    ap.add_argument("--timeout", type=int, default=300, help="Per-model timeout seconds (models often think for minutes)")
     ap.add_argument("--out", default="", help="Write opinions markdown to file")
     ap.add_argument("--judge", default="", help="Optional standalone judge model")
     ap.add_argument("--check", action="store_true", help="Doctor: validate browser + tokens, no council run")
