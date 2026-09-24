@@ -1,5 +1,7 @@
 # Ask-Council — get a second opinion from free AI models (GLM, DeepSeek, Qwen) inside ChatGPT, Claude, or Gemini
 
+![ask-council](thumb.webp)
+
 No API keys. A local Python CLI asks free web LLMs in parallel via headless browser automation; your current model synthesizes the Verdict. Works as a drop-in Claude skill, ChatGPT workflow, or Gemini routine.
 
 - **Who it's for:** anyone who wants a cross-model check — architecture calls, debugging second opinions, writing reviews — without paying per-token.
