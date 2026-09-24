@@ -1,11 +1,11 @@
 ---
 name: ask-council
-description: Council over GLM, DeepSeek, Qwen — convene outside Opinions on a question, or synthesize pasted Opinions into a Verdict. Use when the user says council, second opinion, or pastes opinions.md.
+description: Council over GLM, DeepSeek, Qwen — convene outside Opinions, argue follow-ups across rounds, or synthesize pasted Opinions into a Verdict. Use when the user says council, second opinion, challenge them, or pastes opinions.md.
 ---
 
 # Ask-Council
 
-Two branches. Take exactly one per run.
+Three branches. Take exactly one per run.
 
 ## Branch A — Convene a Council
 
@@ -28,3 +28,14 @@ As Chairman, output exactly:
 3. **Verdict** — best synthesized recommendation, citing which Opinion(s) each point draws from.
 
 Completion criterion: all three headings present; every Verdict claim traces to a quoted Opinion; zero invented Opinions. If only 1 Opinion succeeded, say so with a warning instead of a fake consensus.
+
+## Branch C — Argue (follow-up round)
+
+Fires when you or the user disputes an Opinion and wants the Council to respond.
+
+1. Write the challenge as one direct instruction (quote the claim, state the objection, demand revision-or-rebuttal).
+2. Tell the user to run:
+   `python pipeline/ask_council.py "CHALLENGE" --context opinions.md --out opinions2.md`
+   Each model gets the prior round plus the challenge and answers it directly.
+3. Synthesize per Branch B over the latest round. Cap at 3 rounds, then verdict.
+Completion criterion: every challenged claim has a round-2 response (revised or defended); verdict cites final positions only.

@@ -188,6 +188,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="Doctor: validate browser + tokens, no council run")
     ap.add_argument("--login", default="", metavar="MODEL",
                     help="Manual login: open headed browser with persistent profile for MODEL (currently: qwen). Log in, then press Enter.")
+    ap.add_argument("--context", default="", metavar="FILE",
+                    help="Prior round (e.g. opinions.md) prepended as history; prompt becomes the Chairman's follow-up. Enables argue rounds.")
     args = ap.parse_args()
 
     models = [m.strip().lower() for m in args.models.split(",") if m.strip().lower() in REGISTRY]
@@ -208,6 +210,14 @@ def main():
         prompt = ""
     if not prompt:
         ap.error("empty prompt")
+
+    if args.context:
+        prior = Path(args.context).read_text().strip()
+        prompt = (
+            "PRIOR COUNCIL ROUND (your earlier answer is inside it):\n"
+            f"{prior}\n---\n"
+            f"CHAIRMAN'S FOLLOW-UP — answer it directly, revising your earlier position if convinced:\n{prompt}"
+        )
 
     results = asyncio.run(_gather(prompt, models, args.timeout))
     md = _to_markdown(prompt, results)

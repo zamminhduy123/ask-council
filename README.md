@@ -19,6 +19,12 @@ python pipeline/ask_council.py "Should I use Postgres or SQLite for 10k rows?" -
 
 Paste `opinions.md` back into your host chat. It follows `SKILL.md`: 1. Consensus, 2. Contradictions/blind spots, 3. Final Verdict.
 
+Disagree with an Opinion? Argue a round (repeat up to 3x, then verdict):
+
+```bash
+python pipeline/ask_council.py "Your objection as one direct instruction" --context opinions.md --out opinions2.md
+```
+
 | Model    | Page                | Token source (logged-in DevTools Console)   | Env var          |
 |----------|---------------------|---------------------------------------------|------------------|
 | GLM      | `chat.z.ai`         | `localStorage.getItem("token")`             | `GLM_TOKEN`      |
