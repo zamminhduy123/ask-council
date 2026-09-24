@@ -19,7 +19,7 @@ python pipeline/ask_council.py "Should I use Postgres or SQLite for 10k rows?" -
 
 Paste `opinions.md` back into your host chat. It follows `SKILL.md`: 1. Consensus, 2. Contradictions/blind spots, 3. Final Verdict.
 
-Disagree with an Opinion? Argue a round (repeat up to 3x, then verdict):
+Disagree with an Opinion? Argue rounds (agents with shell access loop autonomously to resolution, max 3 rounds, then verdict; otherwise relay each command):
 
 ```bash
 python pipeline/ask_council.py "Your objection as one direct instruction" --context opinions.md --out opinions2.md

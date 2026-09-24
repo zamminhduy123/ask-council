@@ -11,7 +11,7 @@ Three branches. Take exactly one per run.
 
 You cannot browse the three chats directly; a local CLI does the fan-out.
 
-1. Tell the user to run (details in `README.md` if they hit setup issues):
+1. Convene it yourself if you have shell access, else tell the user to run (setup details in `README.md`):
    `python pipeline/ask_council.py "QUESTION" --out opinions.md`
 2. Completion criterion: `opinions.md` holds one `## OPINION [model]` block per healthy model, each raw text or explicit `_FAILED:_`. No Verdict yet.
 
@@ -29,13 +29,13 @@ As Chairman, output exactly:
 
 Completion criterion: all three headings present; every Verdict claim traces to a quoted Opinion; zero invented Opinions. If only 1 Opinion succeeded, say so with a warning instead of a fake consensus.
 
-## Branch C — Argue (follow-up round)
+## Branch C — Argue to resolution (autonomous loop)
 
-Fires when you or the user disputes an Opinion and wants the Council to respond.
+Fires when you or the user disputes an Opinion, or the round-1 synthesis left open contradictions. The user hears nothing until the loop exits — you run every round yourself.
 
 1. Write the challenge as one direct instruction (quote the claim, state the objection, demand revision-or-rebuttal).
-2. Tell the user to run:
-   `python pipeline/ask_council.py "CHALLENGE" --context opinions.md --out opinions2.md`
-   Each model gets the prior round plus the challenge and answers it directly.
-3. Synthesize per Branch B over the latest round. Cap at 3 rounds, then verdict.
-Completion criterion: every challenged claim has a round-2 response (revised or defended); verdict cites final positions only.
+2. Convene the next round yourself:
+   `python pipeline/ask_council.py "CHALLENGE" --context opinionsN.md --out opinionsN+1.md`
+3. Synthesize per Branch B over the latest round and list remaining disputes.
+4. Repeat while disputes remain and rounds < 3. Then verdict, flagging any residual disagreement as unresolved rather than forcing consensus.
+Completion criterion: every challenged claim has a final response (revised or defended with reasons), no *new* contradictions in the latest round, or round cap hit — then report once: positions per round, what moved, final Verdict.
