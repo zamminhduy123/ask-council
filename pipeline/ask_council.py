@@ -126,11 +126,13 @@ def _manual_login(model):
 
 async def _run_one(model, prompt, timeout):
     mod_name, env_key = REGISTRY[model]
-    if not os.environ.get(env_key):
-        return model, None, f"Missing {env_key} (disabled)"
     try:
         mod = __import__(mod_name)
-        text = await asyncio.wait_for(mod.ask(prompt, timeout=timeout), timeout + 30)
+        saved = mod._saved_profile() if hasattr(mod, "_saved_profile") else None
+        if not os.environ.get(env_key) and not saved:
+            return model, None, f"Missing {env_key} (disabled)"
+        coro = mod.ask(prompt, timeout=timeout)
+        text = await coro if timeout <= 0 else await asyncio.wait_for(coro, timeout + 30)
         return model, text, None
     except Exception as e:
         return model, None, f"{type(e).__name__}: {e}"
@@ -167,9 +169,8 @@ async def _judge(prompt, results, judge_model, timeout):
         return f"_Judge {judge_model} disabled (missing {env_key})._"
     mod = __import__(mod_name)
     try:
-        verdict = await asyncio.wait_for(
-            mod.ask(JUDGE_PROMPT + "\n" + payload, timeout=timeout), timeout + 30
-        )
+        coro = mod.ask(JUDGE_PROMPT + "\n" + payload, timeout=timeout)
+        verdict = await coro if timeout <= 0 else await asyncio.wait_for(coro, timeout + 30)
         return verdict.strip()
     except Exception as e:
         return f"_Judge failed: {type(e).__name__}: {e}_"
@@ -181,7 +182,7 @@ def main():
     ap.add_argument("prompt", nargs="?", help="User query (or omit to read stdin)")
     ap.add_argument("--models", default="glm,deepseek,qwen",
                     help="Comma list from glm,deepseek,qwen (default: all)")
-    ap.add_argument("--timeout", type=int, default=300, help="Per-model timeout seconds (models often think for minutes)")
+    ap.add_argument("--timeout", type=int, default=300, help="Per-model timeout seconds; 0 = wait indefinitely (models often think for minutes)")
     ap.add_argument("--out", default="", help="Write opinions markdown to file")
     ap.add_argument("--judge", default="", help="Optional standalone judge model")
     ap.add_argument("--check", action="store_true", help="Doctor: validate browser + tokens, no council run")

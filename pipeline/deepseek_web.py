@@ -100,8 +100,8 @@ async def send_message(browser, message, timeout=300):
     box = await browser.main_tab.select(TEXTBOX_CSS, timeout=15)
     await box.send_keys(message)
     await _click_send(browser)
-    end, last, stable_since = time() + timeout, "", time()
-    while time() < end:
+    end, last, stable_since = None if timeout <= 0 else time() + timeout, "", time()
+    while end is None or time() < end:
         await sleep(3)
         html = await browser.main_tab.evaluate(
             "document.documentElement.outerHTML", await_promise=True, return_by_value=True,
